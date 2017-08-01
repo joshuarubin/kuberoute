@@ -27,6 +27,18 @@ func p2pDest(ifindex int, msgs []route.Message) net.IP {
 				copy(ip, sa.IP[:])
 			}
 
+			var foundNonZero bool
+			for _, b := range ip {
+				if b != 0 {
+					foundNonZero = true
+					break
+				}
+			}
+
+			if !foundNonZero {
+				continue
+			}
+
 			// found it
 			return ip
 		}
