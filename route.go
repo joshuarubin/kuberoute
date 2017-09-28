@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"strings"
 	"syscall"
 
 	restclient "k8s.io/client-go/rest"
@@ -19,13 +20,35 @@ func kubeConfig() (*restclient.Config, error) {
 	return kubeConfig.ClientConfig()
 }
 
-func hostAddrs(host string) ([]string, error) {
-	u, err := url.Parse(host)
-	if err != nil {
-		return nil, err
+func hostAddrs(hosts ...string) ([]string, error) {
+	addrs := map[string]struct{}{}
+
+	for _, h := range hosts {
+		host := h
+		if !strings.Contains(host, "://") {
+			host = "http://" + host
+		}
+
+		u, err := url.Parse(host)
+		if err != nil {
+			return nil, err
+		}
+
+		as, err := net.LookupHost(u.Host)
+		if err != nil {
+			return nil, fmt.Errorf("error looking up %s: %s", h, err)
+		}
+
+		for _, a := range as {
+			addrs[a] = struct{}{}
+		}
 	}
 
-	return net.LookupHost(u.Host)
+	var ret []string
+	for h := range addrs {
+		ret = append(ret, h)
+	}
+	return ret, nil
 }
 
 func ip4(ip net.IP) (ret [4]byte) {
@@ -130,9 +153,13 @@ func main() {
 
 	fmt.Printf("kubernetes host: %s\n", config.Host)
 
-	addrs, err := hostAddrs(config.Host)
+	hosts := make([]string, len(os.Args)-1)
+	copy(hosts, os.Args[1:])
+	hosts = append(hosts, config.Host)
+
+	addrs, err := hostAddrs(hosts...)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error getting host addresses %s: %s\n", config.Host, err) // #nosec
+		fmt.Fprintf(os.Stderr, "%s\n", err) // #nosec
 		return
 	}
 
